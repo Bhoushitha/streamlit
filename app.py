@@ -8,11 +8,14 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
-# --- Configuration ---
-DJANGO_USERNAME = "ravikiran.perla"
-DJANGO_PASSWORD = "273hFat@"
-BASE_URL = "https://nxtwave-assessments-backend-topin-prod-apis.ccbp.in"
+DJANGO_USERNAME = os.getenv("DJANGO_USERNAME")
+DJANGO_PASSWORD = os.getenv("DJANGO_PASSWORD")
+BASE_URL = os.getenv("BASE_URL")
+
 LOGIN_URL = f"{BASE_URL}/admin/login/"
 ORG_ASSESSMENT_URL = f"{BASE_URL}/admin/nw_assessments_core/organisationassessment/"
 ASSESSMENT_LEVEL_URL = f"{BASE_URL}/admin/nw_assessments_core/assessmentlevel/"
