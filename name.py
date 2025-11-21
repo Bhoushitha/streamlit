@@ -3,49 +3,32 @@ import time
 import json
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
 import os
-
 load_dotenv()
 
 DJANGO_USERNAME = os.getenv("DJANGO_USERNAME")
 DJANGO_PASSWORD = os.getenv("DJANGO_PASSWORD")
 BASE_URL = os.getenv("BASE_URL")
+
 LOGIN_URL = f"{BASE_URL}/admin/login/"
 ORG_ASSESSMENT_URL = f"{BASE_URL}/admin/nw_assessments_core/organisationassessment/"
 ASSESSMENT_LEVEL_URL = f"{BASE_URL}/admin/nw_assessments_core/assessmentlevel/"
 TASK_LIST_URL = f"{BASE_URL}/admin/nw_tasks/task/"
 
 class NxtWaveScraper:
+    # --- The core automation class remains the same as it is working correctly ---
     def __init__(self, username, password):
         self.username = username
         self.password = password
-        
-        # Updated Chrome options for Streamlit Cloud
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--disable-features=NetworkService')
-        options.add_argument('--window-size=1920x1080')
-        options.add_argument('--disable-features=VizDisplayCompositor')
-        
-        # Try to detect if running on Streamlit Cloud
-        if os.path.exists('/usr/bin/chromium'):
-            # Streamlit Cloud environment
-            options.binary_location = '/usr/bin/chromium'
-            service = Service(executable_path='/usr/bin/chromedriver')
-        else:
-            # Local environment - use webdriver-manager
-            from webdriver_manager.chrome import ChromeDriverManager
-            service = Service(ChromeDriverManager().install())
-        
+        service = Service(ChromeDriverManager().install())
+        options = webdriver.ChromeOptions()
+        # options.add_argument('--headless')
         self.driver = webdriver.Chrome(service=service, options=options)
 
     def login(self):
@@ -63,6 +46,7 @@ class NxtWaveScraper:
         except Exception as e:
             st.error(f"Login error: {e}")
             return False
+
     def get_assessment_id_from_org_assessment(self, org_assessment_id):
         search_prefix = org_assessment_id[:8]
         search_url = f"{ORG_ASSESSMENT_URL}?q={search_prefix}"
@@ -325,5 +309,3 @@ if st.session_state.stage == "selection":
         st.session_state.scraper = None
         if st.button("Start New Process"):
             st.rerun()
-
-    # ... rest of your methods remain the same ...
