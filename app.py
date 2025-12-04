@@ -3,15 +3,12 @@ import time
 import json
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
+from webdriver_manager.chrome import ChromeDriverManager
+from urllib.parse import urlparse, parse_qs
 
 DJANGO_USERNAME = os.getenv("DJANGO_USERNAME")
 DJANGO_PASSWORD = os.getenv("DJANGO_PASSWORD")
@@ -21,31 +18,15 @@ ORG_ASSESSMENT_URL = f"{BASE_URL}/admin/nw_assessments_core/organisationassessme
 ASSESSMENT_LEVEL_URL = f"{BASE_URL}/admin/nw_assessments_core/assessmentlevel/"
 TASK_LIST_URL = f"{BASE_URL}/admin/nw_tasks/task/"
 
+
 class NxtWaveScraper:
+    # --- The core automation class is UNCHANGED ---
     def __init__(self, username, password):
         self.username = username
         self.password = password
-        
-        # Updated Chrome options for Streamlit Cloud
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--disable-features=NetworkService')
-        options.add_argument('--window-size=1920x1080')
-        options.add_argument('--disable-features=VizDisplayCompositor')
-        
-        # Try to detect if running on Streamlit Cloud
-        if os.path.exists('/usr/bin/chromium'):
-            # Streamlit Cloud environment
-            options.binary_location = '/usr/bin/chromium'
-            service = Service(executable_path='/usr/bin/chromedriver')
-        else:
-            # Local environment - use webdriver-manager
-            from webdriver_manager.chrome import ChromeDriverManager
-            service = Service(ChromeDriverManager().install())
-        
+        service = Service(ChromeDriverManager().install())
+        options = webdriver.ChromeOptions()
+        # options.add_argument('--headless')
         self.driver = webdriver.Chrome(service=service, options=options)
 
     def login(self):
@@ -63,6 +44,7 @@ class NxtWaveScraper:
         except Exception as e:
             st.error(f"Login error: {e}")
             return False
+
     def get_assessment_id_from_org_assessment(self, org_assessment_id):
         search_prefix = org_assessment_id[:8]
         search_url = f"{ORG_ASSESSMENT_URL}?q={search_prefix}"
@@ -207,6 +189,9 @@ if 'tasks_found' not in st.session_state:
     st.session_state.tasks_found = []
 if 'scraper' not in st.session_state:
     st.session_state.scraper = None
+# <<< --- NEW: Initialize session state for the ID --- >>>
+if 'org_assessment_id' not in st.session_state:
+    st.session_state.org_assessment_id = ""
 
 subject_options = [
     "GET_CODING_EXAM_SUBMISSION_STATS",
@@ -216,41 +201,48 @@ subject_options = [
     "GET_HTML_CODING_EXAM_LATEST_SUBMISSION_STATS",
 ]
 
-# <<< --- NEW: The "Brain" for Auto-Assignment --- >>>
-# This dictionary maps keywords (in uppercase) to the subject values.
-# You can easily add more keywords here.
 TITLE_TO_SUBJECT_MAP = {
-    "CODING": "GET_CODING_EXAM_SUBMISSION_STATS",
-    "SQL": "GET_SQL_CODING_EXAM_SUBMISSION_STATS",
-    "HTML": "GET_HTML_CODING_EXAM_SUBMISSION_STATS",
-    "MCQ": "GET_MCQ_EXAM_SUBMISSION_STATS",
-    "APTITUDE": "GET_MCQ_EXAM_SUBMISSION_STATS", # Assuming Aptitude is MCQ
-    "ENGLISH": "GET_MCQ_EXAM_SUBMISSION_STATS",   # Assuming English is MCQ
+    "CODING": "GET_CODING_EXAM_SUBMISSION_STATS", "SQL": "GET_SQL_CODING_EXAM_SUBMISSION_STATS",
+    "HTML": "GET_HTML_CODING_EXAM_SUBMISSION_STATS", "MCQ": "GET_MCQ_EXAM_SUBMISSION_STATS",
+    "APTITUDE": "GET_MCQ_EXAM_SUBMISSION_STATS", "ENGLISH": "GET_MCQ_EXAM_SUBMISSION_STATS",
 }
 
 def auto_assign_subject(title):
-    """Takes a title and returns a suggested subject based on keywords."""
     title_upper = title.upper()
     for keyword, subject in TITLE_TO_SUBJECT_MAP.items():
         if keyword in title_upper:
             return subject
-    return subject_options[0] # Default to the first option if no match
+    return subject_options[0]
 
 # --- UI Stage 1: Initial Input ---
 if st.session_state.stage == "initial":
     with st.container(border=True):
         st.header("Step 1: Find Assessable Tasks")
-        org_assessment_id_input = st.text_input("Organisation Assessment ID")
+        org_assessment_link_input = st.text_input("Organisation Assessment Link", help="Paste the full link...")
         if st.button("Find Tasks", type="primary"):
-            if not org_assessment_id_input:
-                st.warning("Please enter an Organisation Assessment ID.")
+            if not org_assessment_link_input:
+                st.warning("Please paste the Organisation Assessment Link.")
             else:
+                org_assessment_id = None
+                try:
+                    parsed_url = urlparse(org_assessment_link_input)
+                    query_params = parse_qs(parsed_url.query)
+                    org_assessment_id = query_params.get('org_id', [None])[0]
+                    if not org_assessment_id:
+                        st.error("Could not find 'org_id' in the provided link."); st.stop()
+                except Exception:
+                    st.error("Invalid URL format."); st.stop()
+                
+                # <<< --- NEW: Store the ID in session state --- >>>
+                st.session_state.org_assessment_id = org_assessment_id
+                
+                st.info(f"Successfully extracted Organisation ID: `{org_assessment_id}`")
                 st.header("Discovery Log")
                 with st.spinner("Finding tasks... This will take a moment."):
                     scraper = NxtWaveScraper(DJANGO_USERNAME, DJANGO_PASSWORD)
                     st.session_state.scraper = scraper
                     if scraper.login():
-                        assessment_id = scraper.get_assessment_id_from_org_assessment(org_assessment_id_input)
+                        assessment_id = scraper.get_assessment_id_from_org_assessment(org_assessment_id)
                         if assessment_id:
                             assessment_id_prefix = assessment_id[:8]
                             tasks = scraper.extract_title_and_unit_id_pairs(assessment_id_prefix)
@@ -263,12 +255,15 @@ if st.session_state.stage == "initial":
                         st.session_state.scraper.close_browser()
                         st.session_state.scraper = None
 
-# --- UI Stage 2: Task Selection (with Auto-Assignment) and Execution ---
+# --- UI Stage 2: Task Selection and Execution ---
 if st.session_state.stage == "selection":
     with st.container(border=True):
         st.header("Step 2: Confirm Tasks and Subjects")
-        st.info("The tool has automatically assigned subjects based on the task titles. You can override them if needed.")
         
+        # <<< --- NEW: Display the ID from session state --- >>>
+        st.info(f"Showing tasks found for Organisation Assessment ID: `{st.session_state.org_assessment_id}`")
+        
+        st.info("The tool has automatically assigned subjects based on task titles. You can override them if needed.")
         with st.form("task_selection_form"):
             tasks_to_run = []
             for i, task in enumerate(st.session_state.tasks_found):
@@ -280,15 +275,11 @@ if st.session_state.stage == "selection":
                     st.markdown(f"**Title:** `{task['title']}`")
                     st.caption(f"Unit ID: {task['unit_id']}")
                 with cols[2]:
-                    # <<< --- NEW: Auto-assignment logic --- >>>
                     default_subject = auto_assign_subject(task['title'])
                     default_index = subject_options.index(default_subject) if default_subject in subject_options else 0
-                    
                     subject = st.selectbox("Assign Subject", subject_options, key=f"subject_{i}", index=default_index)
-                
                 if selected:
                     tasks_to_run.append({"title": task['title'], "unit_id": task['unit_id'], "subject": subject})
-
             process_button = st.form_submit_button("Process Selected Tasks", type="primary")
 
     if process_button:
@@ -297,7 +288,6 @@ if st.session_state.stage == "selection":
         with log_container:
             if not tasks_to_run:
                 st.warning("No tasks were selected to process."); st.stop()
-
             scraper = st.session_state.scraper
             total_tasks = len(tasks_to_run)
             all_tasks_successful = True
@@ -305,25 +295,21 @@ if st.session_state.stage == "selection":
                 title = task_data["title"]; unit_id = task_data["unit_id"]; subject = task_data["subject"]
                 st.subheader(f"--- Processing Task {i+1} of {total_tasks} for Title: '{title}' ---")
                 st.info(f"Using Subject: '{subject}' for Unit ID: {unit_id}")
-                
                 if not scraper.open_tasks_page_and_click_add():
                     all_tasks_successful = False; break
                 if not scraper.fill_task_form_and_save(unit_id, subject):
                     all_tasks_successful = False; break
                 if not scraper.poll_and_extract_output(title, subject):
                     all_tasks_successful = False; break
-                
                 st.success(f"Task for '{title}' completed successfully.")
-            
             if all_tasks_successful:
                 st.header("✅ All selected tasks have been processed successfully.")
                 st.balloons()
-        
         if scraper: scraper.close_browser()
+        # Reset the state for the next run
         st.session_state.stage = "initial"
         st.session_state.tasks_found = []
         st.session_state.scraper = None
+        st.session_state.org_assessment_id = "" # Reset the ID
         if st.button("Start New Process"):
             st.rerun()
-
-    # ... rest of your methods remain the same ...
