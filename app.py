@@ -178,8 +178,7 @@ class NxtWaveScraper:
                 "GET_CODING_EXAM_SUBMISSION_STATS": "coding_exam_submission_stats_url",
                 "GET_MCQ_EXAM_SUBMISSION_STATS": "mcq_exam_submission_stats_url",
                 "GET_SQL_CODING_EXAM_SUBMISSION_STATS": "sql_coding_exam_submission_stats_url",
-                "GET_HTML_CODING_EXAM_SUBMISSION_STATS": "html_coding_exam_submission_stats_url",
-                "GET_HTML_CODING_EXAM_LATEST_SUBMISSION_STATS": "html_coding_exam_latest_submission_stats_url"
+                "GET_HTML_CODING_EXAM_SUBMISSION_STATS": "html_coding_exam_submission_stats_url"
             }
             url_key = key_map.get(subject)
             download_url = data.get("response", {}).get(url_key)
@@ -212,8 +211,7 @@ subject_options = [
     "GET_CODING_EXAM_SUBMISSION_STATS",
     "GET_MCQ_EXAM_SUBMISSION_STATS",
     "GET_SQL_CODING_EXAM_SUBMISSION_STATS",
-    "GET_HTML_CODING_EXAM_SUBMISSION_STATS",
-    "GET_HTML_CODING_EXAM_LATEST_SUBMISSION_STATS",
+    "GET_HTML_CODING_EXAM_SUBMISSION_STATS"
 ]
 
 # <<< --- NEW: The "Brain" for Auto-Assignment --- >>>
